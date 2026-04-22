@@ -234,7 +234,7 @@ export default {
         </span>
         <span v-if="Number.isFinite(contact.priority_score)"
               class="priority-stars"
-              :title="'Score ICP muchbetter.ai: ' + contact.priority_score + '/100'"
+              :title="'Score ICP: ' + contact.priority_score + '/100'"
               aria-label="Score ICP">
           <svg v-for="i in 5" :key="i"
                viewBox="0 0 20 20"

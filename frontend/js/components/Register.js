@@ -62,11 +62,11 @@ export default {
           <form @submit.prevent="submit" class="space-y-4">
             <div>
               <label class="label">Nom complet</label>
-              <input class="input" v-model="name" placeholder="Nicolas Monniot" />
+              <input class="input" v-model="name" placeholder="Prénom Nom" />
             </div>
             <div>
               <label class="label">Email</label>
-              <input class="input" type="email" v-model="email" placeholder="you@muchbetter.ai" />
+              <input class="input" type="email" v-model="email" placeholder="you@example.com" />
             </div>
             <div>
               <label class="label">Mot de passe</label>

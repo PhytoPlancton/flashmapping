@@ -315,11 +315,11 @@ def _resolve_contact_value(
         s = (contact.get("seniority") or "").strip()
         return s if s and s != "Unknown" else None
     if our_key == "source":
-        # TechToMed prefix = manually-curated Nicolas' internal signal, keeps
-        # the Pipedrive field both truthful and sortable.
+        # "Réseau interne" prefix keeps the Pipedrive Source field sortable
+        # for contacts the user explicitly marked as already-known.
         if contact.get("is_techtomed"):
             src = (contact.get("source") or "").strip()
-            return f"TechToMed — {src}" if src else "TechToMed"
+            return f"Réseau interne — {src}" if src else "Réseau interne"
         return (contact.get("source") or "").strip() or None
     if our_key == "qualification":
         return (contact.get("qualification") or "").strip() or None
@@ -442,7 +442,7 @@ def _build_notes(
 
     if not _is_mapped("source"):
         if contact.get("is_techtomed"):
-            lines.append("Source: TechToMed (déjà connu de Nicolas)")
+            lines.append("Source: réseau interne")
         elif contact.get("source"):
             lines.append(f"Source: {contact['source']}")
 
@@ -460,7 +460,7 @@ def _build_notes(
     if company.get("name"):
         lines.append("")
         lines.append(
-            f"— Poussé depuis muchbetter.ai mapping ({company.get('name', '')})"
+            f"— Poussé depuis FlashMapping ({company.get('name', '')})"
         )
 
     return "\n".join(lines).strip()

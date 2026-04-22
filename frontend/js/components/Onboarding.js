@@ -130,7 +130,7 @@ export default {
                 <div>
                   <label class="label">Nom de l\u2019équipe</label>
                   <input class="input" v-model="creatingName"
-                         placeholder="muchbetter.ai" autofocus />
+                         placeholder="Ma super équipe" autofocus />
                 </div>
                 <button type="submit" class="btn btn-primary w-full justify-center"
                         :disabled="creating">
@@ -162,9 +162,6 @@ export default {
             </div>
           </div>
 
-          <p class="text-[11px] text-ink-400 text-center mt-10">
-            muchbetter.ai × TechToMed · local-first
-          </p>
         </div>
       </main>
     </div>

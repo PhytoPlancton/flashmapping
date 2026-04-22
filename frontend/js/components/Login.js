@@ -49,7 +49,6 @@ export default {
             <div class="w-9 h-9 rounded-lg bg-ink-900 text-white flex items-center justify-center font-semibold">M</div>
           </div>
           <h1 class="text-xl font-semibold tracking-tight">FlashMapping</h1>
-          <p class="text-ink-500 text-xs mt-1">muchbetter.ai · Account mapping tool</p>
         </div>
 
         <div class="bg-white border border-ink-200 rounded-xl p-6 shadow-card">
@@ -57,7 +56,7 @@ export default {
             <div>
               <label class="label">Email</label>
               <input class="input" type="email" autocomplete="username"
-                     v-model="email" placeholder="you@muchbetter.ai" autofocus />
+                     v-model="email" placeholder="you@example.com" autofocus />
             </div>
             <div>
               <label class="label">Mot de passe</label>
