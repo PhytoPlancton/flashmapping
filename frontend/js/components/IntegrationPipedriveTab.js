@@ -226,8 +226,17 @@ export default {
       try {
         await api.connectPipedrive(slug, { api_key: key });
         pipedrive.apiKeyInput = '';
-        store.toast('Pipedrive connecté', 'success');
         await loadStatus();
+        // Once connected, automatically fetch + auto-map the Pipedrive field
+        // schema and reveal the mapping section so the admin sees the full
+        // wiring in one shot (no "click around to finish configuring").
+        if (pipedrive.configured) {
+          mappingState.open = true;
+          try { await refreshMapping(); } catch (e) { /* non-fatal */ }
+          store.toast('Pipedrive connecté — champs détectés automatiquement', 'success');
+        } else {
+          store.toast('Pipedrive connecté', 'success');
+        }
       } catch (e) {
         pipedrive.connectError = e?.message || 'Échec connexion Pipedrive';
       } finally {
@@ -476,30 +485,60 @@ export default {
         <div v-if="!store.isAdmin()" class="text-[12px] text-ink-500">
           Demande à un admin de connecter Pipedrive pour cette équipe.
         </div>
-        <form v-else @submit.prevent="connectPipedrive" class="space-y-2">
-          <label class="label">Clé API Pipedrive</label>
-          <input class="input font-mono"
-                 type="password"
-                 autocomplete="off"
-                 v-model="pipedrive.apiKeyInput"
-                 placeholder="Colle ta clé API Pipedrive ici" />
-          <div v-if="pipedrive.connectError"
-               class="text-[11.5px] px-2 py-1 rounded"
-               style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA">
-            {{ pipedrive.connectError }}
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <a :href="helpUrl" target="_blank" rel="noopener"
-               class="text-[11.5px] text-ink-500 hover:text-ink-900 inline-flex items-center gap-1">
-              Où trouver ma clé API ?
-              <span v-html="icons.external"></span>
-            </a>
-            <button type="submit" class="btn btn-primary"
-                    :disabled="pipedrive.connecting || !pipedrive.apiKeyInput.trim()">
-              {{ pipedrive.connecting ? 'Test en cours…' : 'Tester + Enregistrer' }}
-            </button>
-          </div>
-        </form>
+        <template v-else>
+          <!-- 3-step guide, always visible. -->
+          <ol class="pipedrive-setup-steps">
+            <li>
+              <span class="pipedrive-step-num">1</span>
+              <div>
+                <div class="pipedrive-step-title">Ouvre les paramètres API Pipedrive</div>
+                <a :href="helpUrl" target="_blank" rel="noopener"
+                   class="pipedrive-step-link">
+                  Ouvrir Pipedrive → Personal preferences → API
+                  <span v-html="icons.external"></span>
+                </a>
+              </div>
+            </li>
+            <li>
+              <span class="pipedrive-step-num">2</span>
+              <div>
+                <div class="pipedrive-step-title">Copie ta clé API personnelle</div>
+                <div class="pipedrive-step-hint">
+                  Chaîne alphanumérique de 40 caractères. Une clé par utilisateur —
+                  elle reste chez toi, on ne la partage jamais côté client.
+                </div>
+              </div>
+            </li>
+            <li>
+              <span class="pipedrive-step-num">3</span>
+              <div>
+                <div class="pipedrive-step-title">Colle-la ici</div>
+                <form @submit.prevent="connectPipedrive" class="space-y-2 mt-1.5">
+                  <input class="input font-mono"
+                         type="password"
+                         autocomplete="off"
+                         v-model="pipedrive.apiKeyInput"
+                         placeholder="••••••••••••••••••••••••••••••••••••••••" />
+                  <div v-if="pipedrive.connectError"
+                       class="text-[11.5px] px-2 py-1 rounded"
+                       style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA">
+                    {{ pipedrive.connectError }}
+                  </div>
+                  <div class="flex items-center justify-end">
+                    <button type="submit" class="btn btn-primary"
+                            :disabled="pipedrive.connecting || !pipedrive.apiKeyInput.trim()">
+                      {{ pipedrive.connecting ? 'Test en cours…' : 'Tester et connecter' }}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </li>
+          </ol>
+          <p class="text-[11px] text-ink-400 mt-3">
+            Au clic, on teste la clé, on récupère ton nom d'utilisateur,
+            puis on auto-mappe tes champs custom Pipedrive. Tu n'as rien d'autre à faire.
+          </p>
+        </template>
       </section>
     </div>
   `

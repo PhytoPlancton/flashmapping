@@ -83,7 +83,21 @@ export default {
       return Number.isFinite(n) && n > 0 ? n : null;
     });
 
-    const canSync = computed(() => crmIdInt.value !== null && !syncing.value);
+    // `pipedrive_configured` is published by the backend on team.settings
+    // (TeamSettingsPublic.from_settings). When false, we don't show the sync
+    // button at all — instead a "Connecter Pipedrive" CTA opens the Settings
+    // modal straight to the Pipedrive tab.
+    const pipedriveConfigured = computed(
+      () => !!store.currentTeam?.settings?.pipedrive_configured
+    );
+    const canSync = computed(
+      () => pipedriveConfigured.value && crmIdInt.value !== null && !syncing.value
+    );
+    function openPipedriveSettings() {
+      store.openSettingsModal();
+      // The Settings modal reads location.hash to pick the active tab.
+      location.hash = '#/settings/integrations/pipedrive';
+    }
 
     const lastSyncedAt = computed(() => {
       // eslint-disable-next-line no-unused-expressions
@@ -178,6 +192,7 @@ export default {
       hqShort, countryEmoji,
       addContact,
       syncPipedrive, syncing, canSync, crmIdInt, syncTooltip,
+      pipedriveConfigured, openPipedriveSettings,
       lastSyncedRel,
       displayedAreas, overflowCount, overflowAreas,
       areasPopoverOpen, areasWrapRef, toggleAreasPopover,
@@ -235,7 +250,15 @@ export default {
           <div class="flex flex-col items-end gap-1 shrink-0">
             <div class="flex items-center gap-2">
               <ActionsMenu :company="company" />
-              <button class="btn btn-secondary"
+              <button v-if="!pipedriveConfigured"
+                      class="btn btn-secondary pipedrive-connect-cta"
+                      @click="openPipedriveSettings"
+                      title="Configurer la clé API Pipedrive dans les paramètres">
+                <span v-html="icons.plug"></span>
+                Connecter Pipedrive
+              </button>
+              <button v-else
+                      class="btn btn-secondary"
                       :disabled="!canSync"
                       :title="syncTooltip"
                       @click="syncPipedrive">
@@ -250,7 +273,10 @@ export default {
                 Ajouter contact
               </button>
             </div>
-            <div v-if="lastSyncedRel" class="text-[11px] text-ink-400">
+            <div v-if="!pipedriveConfigured" class="text-[11px] text-ink-400">
+              Aucune clé API connectée
+            </div>
+            <div v-else-if="lastSyncedRel" class="text-[11px] text-ink-400">
               Synchronisé il y a {{ lastSyncedRel }}
             </div>
             <div v-else-if="crmIdInt === null" class="text-[11px] text-ink-400">
