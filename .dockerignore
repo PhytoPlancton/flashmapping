@@ -1,0 +1,41 @@
+# Secrets
+.env
+backend/.env
+*.env.local
+
+# PII / local data — never bake into the image
+data/
+out/
+scripts/add_aptar_leads.py
+scripts/add_ipsen_leads.py
+scripts/add_urgo_leads.py
+scripts/add_multi_leads.py
+scripts/fix_aptar_categories.py
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Git + agent state
+.git/
+.github/
+.claude/
+
+# Docs — not needed in runtime image
+*.md
+RUN.md
+SPEC.md
+SPEC_V2_TEAMS.md
+UX_*.md
+
+# OS
+.DS_Store
+Thumbs.db
