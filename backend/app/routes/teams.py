@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import secrets
 import tempfile
 import unicodedata
@@ -1850,6 +1851,156 @@ async def export_team_xlsx(
         tmp_path.unlink(missing_ok=True)
 
     filename = f"pharma_mapping_{team_slug}_{today}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/teams/{team_slug}/folders/{folder_id}/export/xlsx")
+async def export_folder_xlsx(
+    team_slug: str,
+    folder_id: str,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> StreamingResponse:
+    """Download all companies + contacts of one folder as XLSX.
+
+    `folder_id` may be the literal string "root" to export companies with no
+    folder. Any other value must be a valid ObjectId pointing to a folder
+    owned by this team.
+    """
+    db = get_db()
+    team, _ = await require_team_member(db, team_slug, user)
+    team_id = team["_id"]
+
+    is_root = folder_id == "root"
+    folder_name = "Sans dossier"
+    if not is_root:
+        fid = _safe_oid(folder_id, "Folder")
+        folder = await db.folders.find_one({"_id": fid, "team_id": team_id})
+        if not folder:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Folder not found")
+        folder_name = folder.get("name") or "Dossier"
+
+    import sys
+    sys.path.insert(0, str(PROJECT_ROOT))
+    try:
+        from build_xlsx import write_workbook  # type: ignore
+    except Exception as e:
+        log.exception("Failed to import build_xlsx")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"build_xlsx import failed: {e}",
+        )
+
+    # Companies in this folder only.
+    query: dict[str, Any] = {
+        "team_id": team_id,
+        "$or": [{"deleted_at": None}, {"deleted_at": {"$exists": False}}],
+    }
+    if is_root:
+        # "root" = companies without a folder (None or missing)
+        query["$and"] = [
+            {"$or": [{"folder_id": None}, {"folder_id": {"$exists": False}}]}
+        ]
+    else:
+        query["folder_id"] = fid
+
+    company_by_id: dict[Any, dict[str, Any]] = {}
+    async for comp in db.companies.find(query):
+        company_by_id[comp["_id"]] = comp
+
+    if not company_by_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Folder is empty")
+
+    company_ids = list(company_by_id.keys())
+
+    contact_counts: dict[Any, int] = {}
+    async for c in db.contacts.find(
+        {"team_id": team_id, "company_id": {"$in": company_ids}},
+        projection={"company_id": 1},
+    ):
+        contact_counts[c["company_id"]] = contact_counts.get(c["company_id"], 0) + 1
+
+    today = datetime.now(tz=timezone.utc).date().isoformat()
+
+    companies_list: list[dict[str, Any]] = []
+    for comp in company_by_id.values():
+        companies_list.append(
+            {
+                "Name": comp.get("name", ""),
+                "Website": comp.get("domain", ""),
+                "Label": comp.get("priority", ""),
+                "Address": comp.get("hq", ""),
+                "Phone": "",
+                "Priorité (P1/P2/P3)": comp.get("priority", ""),
+                "Statut CRM": comp.get("crm_status", ""),
+                "Work Status": comp.get("work_status", ""),
+                "PIC muchbetter": comp.get("pic", ""),
+                "Next Step": comp.get("next_step", ""),
+                "CRM_ID": comp.get("crm_id", ""),
+                "LinkedIn URL": comp.get("linkedin_url", ""),
+                "Effectif": comp.get("headcount", ""),
+                "Aires thérapeutiques (enrichies)": ", ".join(
+                    comp.get("therapeutic_areas", []) or []
+                ),
+                "Nb contacts mappés": contact_counts.get(comp["_id"], 0),
+                "Date enrichissement": today,
+                "Commentaires CRM": comp.get("comments_crm", ""),
+                "Notes": "",
+            }
+        )
+
+    contacts_list: list[dict[str, Any]] = []
+    async for c in db.contacts.find(
+        {"team_id": team_id, "company_id": {"$in": company_ids}}
+    ).sort([("company_id", 1), ("level", 1), ("position_in_level", 1)]):
+        comp = company_by_id.get(c["company_id"], {})
+        cat_label = CATEGORY_LABELS.get(c.get("category", "other"), "")
+        contacts_list.append(
+            {
+                "Name": c.get("name", ""),
+                "Organization": comp.get("name", ""),
+                "Job Title": c.get("title", ""),
+                "Email": c.get("email", ""),
+                "Phone": c.get("phone", ""),
+                "Label": cat_label,
+                "LinkedIn URL": c.get("linkedin_url", ""),
+                "Location": c.get("location", ""),
+                "Priorité compte": comp.get("priority", ""),
+                "CRM_ID compte": comp.get("crm_id", ""),
+                "Séniorité": c.get("seniority", ""),
+                "Catégorie rôle": cat_label,
+                "Aire thérapeutique": ", ".join(
+                    c.get("therapeutic_areas", []) or []
+                ),
+                "Flag C-Level": "Oui" if c.get("flag_c_level") else "Non",
+                "Flag Manager-de-managers": "Oui"
+                if c.get("flag_manager_of_managers")
+                else "Non",
+                "Flag BU Head": "Oui" if c.get("flag_bu_head") else "Non",
+                "Priority Score": c.get("priority_score", 0),
+                "Source": c.get("source", ""),
+                "Déjà connu Nicolas (O/N)": "O" if c.get("is_techtomed") else "N",
+                "Décideur ou Influenceur (à remplir terrain)": c.get(
+                    "decision_vs_influencer", ""
+                ),
+                "Notes": c.get("notes", ""),
+            }
+        )
+
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        write_workbook(tmp_path, companies_list, contacts_list)
+        data = tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    # Slugified folder name in the filename, safe for Content-Disposition.
+    safe_folder = re.sub(r"[^A-Za-z0-9-]+", "_", folder_name).strip("_") or "folder"
+    filename = f"flashmapping_{team_slug}_{safe_folder}_{today}.xlsx"
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

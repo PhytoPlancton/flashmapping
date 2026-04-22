@@ -271,6 +271,26 @@ export const pipedriveAutoMatchCompany = (teamSlug, companySlug) =>
     { method: 'POST' }
   );
 
+// Folder export — returns a Blob + filename for the user to save.
+export async function exportFolderXLSX(teamSlug, folderId) {
+  const token = localStorage.getItem('token') || '';
+  const id = folderId ? encodeURIComponent(folderId) : 'root';
+  const res = await fetch(
+    `/api/teams/${enc(teamSlug)}/folders/${id}/export/xlsx`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); msg = d.detail || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  // Extract filename from Content-Disposition if backend provided one.
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename="([^"]+)"/i);
+  return { blob, filename: m ? m[1] : 'export.xlsx' };
+}
+
 // --- Custom-field mapping --------------------------------------------------
 // Drive the Settings > Intégrations > Pipedrive "Mapping des champs" panel.
 //   GET    /fields          → schema + mapping + whitelist (any member)
@@ -316,5 +336,6 @@ export default {
   classifyTitle, seed, exportXlsx,
   pipedriveStatus, connectPipedrive, disconnectPipedrive,
   syncCompanyToPipedrive, syncContactToPipedrive, pipedriveAutoMatchCompany,
+  exportFolderXLSX,
   pipedriveListFields, pipedriveRefreshFields, pipedriveUpdateMapping
 };

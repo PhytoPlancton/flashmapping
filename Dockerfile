@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 # App source.
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
+# XLSX builder sits at project root — imported by the /export/xlsx routes via
+# a sys.path insert of PROJECT_ROOT.
+COPY build_xlsx.py /app/build_xlsx.py
 
 WORKDIR /app/backend
 

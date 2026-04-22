@@ -295,6 +295,19 @@ export const store = reactive({
   openICPDrawer() { this.icpDrawerOpen = true; },
   closeICPDrawer() { this.icpDrawerOpen = false; },
 
+  async exportFolderXLSX(teamSlug, folderId, folderName) {
+    const { blob, filename } = await api.exportFolderXLSX(teamSlug, folderId);
+    // Trigger a native download without leaving the page.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || `flashmapping_${folderName || 'dossier'}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
   openSettingsModal() {
     // Snapshot the current hash so we can restore it when closing the modal,
     // then switch to the settings sub-route so the existing tab-routing logic

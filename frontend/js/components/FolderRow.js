@@ -54,6 +54,7 @@ export default {
     const iconPickerOpen = ref(false);
     const iconWrapEl = ref(null);
     const palette = EMOJI_PALETTE;
+    const exporting = ref(false);
 
     const folderId = computed(() => props.folder._id || props.folder.id);
     const expanded = computed(() => store.isFolderExpanded(folderId.value));
@@ -332,12 +333,27 @@ export default {
       store.modal = { type: 'company-create', payload: { folder_id: folderId.value } };
     }
 
+    async function onExportClick() {
+      if (exporting.value) return;
+      const teamSlug = store.currentTeam?.slug;
+      if (!teamSlug) return;
+      exporting.value = true;
+      try {
+        await store.exportFolderXLSX(teamSlug, folderId.value, props.folder?.name || 'Dossier');
+      } catch (e) {
+        store.toast?.(e?.message || 'Export impossible', 'error');
+      } finally {
+        exporting.value = false;
+      }
+    }
+
     return {
       store, icons,
       folderId, expanded, isActive, count, displayIcon,
       renaming, renameValue, renameInput,
       dropActive,
       iconPickerOpen, iconWrapEl, palette,
+      exporting, onExportClick,
       toggleExpanded, onHeaderClick,
       startRename, commitRename, cancelRename, onRenameKey,
       toggleIconPicker, pickIcon,
@@ -401,6 +417,15 @@ export default {
         <span class="folder-count" v-if="!renaming">{{ count }}</span>
 
         <span class="folder-actions" v-if="!renaming">
+          <button type="button"
+                  class="folder-action-btn"
+                  title="Exporter en Excel"
+                  aria-label="Télécharger le dossier en XLSX"
+                  :disabled="exporting"
+                  @click.stop="onExportClick">
+            <span v-if="exporting" class="folder-action-spinner" aria-hidden="true"></span>
+            <span v-else v-html="icons.download"></span>
+          </button>
           <button type="button"
                   class="folder-action-btn"
                   title="Renommer"
