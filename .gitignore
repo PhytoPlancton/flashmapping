@@ -1,0 +1,38 @@
+# ---- Secrets (NEVER commit) ----
+.env
+backend/.env
+*.env.local
+*.pem
+*.key
+
+# ---- PII / contact data (public repo → excluded) ----
+data/
+out/
+scripts/add_aptar_leads.py
+scripts/add_ipsen_leads.py
+scripts/add_urgo_leads.py
+scripts/add_multi_leads.py
+scripts/fix_aptar_categories.py
+
+# ---- Python ----
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env.venv/
+*.egg-info/
+.pytest_cache/
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- Agent / scratch state ----
+.claude/

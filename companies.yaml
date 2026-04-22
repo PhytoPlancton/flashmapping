@@ -1,0 +1,34 @@
+# Manual domain mapping for the 13 P2 pharma accounts.
+# `find-and-enrich-company` needs a domain or LinkedIn URL — name alone fails.
+# Feel free to edit if a domain is wrong or you want to target a specific entity
+# (e.g., Merck Group = Merck KGaA Germany, ≠ MSD/Merck & Co US).
+
+p2_accounts:
+  - name: "LABORATOIRE LEO"
+    domain: "leo-pharma.com"
+    aliases: ["Leo Pharma", "LEO Pharma A/S"]
+  - name: "IPSEN"
+    domain: "ipsen.com"
+  - name: "NOVO NORDISK"
+    domain: "novonordisk.com"
+  - name: "TAKEDA"
+    domain: "takeda.com"
+  - name: "APTARGROUP"
+    domain: "aptar.com"
+  - name: "GE HEALTHCARE"
+    domain: "gehealthcare.com"
+  - name: "Merck Group"
+    domain: "merckgroup.com"
+    note: "Merck KGaA (DE) — distinct from MSD / Merck & Co. (US)."
+  - name: "Servier"
+    domain: "servier.com"
+  - name: "URGO"
+    domain: "urgo.com"
+  - name: "Upsa"
+    domain: "upsa.fr"
+  - name: "Bayer"
+    domain: "bayer.com"
+  - name: "Biogen"
+    domain: "biogen.com"
+  - name: "TEVA"
+    domain: "tevapharm.com"
