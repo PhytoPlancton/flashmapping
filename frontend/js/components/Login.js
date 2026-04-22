@@ -72,10 +72,12 @@ export default {
             </button>
           </form>
 
-          <div v-if="store.bootstrapNeeded" class="mt-4 pt-4 border-t border-ink-100 text-center">
-            <p class="text-xs text-ink-500 mb-2">Première utilisation ?</p>
+          <div class="mt-4 pt-4 border-t border-ink-100 text-center">
+            <p class="text-xs text-ink-500 mb-2">
+              {{ store.bootstrapNeeded ? 'Première utilisation ?' : 'Pas encore de compte ?' }}
+            </p>
             <button class="btn btn-secondary w-full justify-center" @click="goRegister">
-              Créer le premier compte
+              {{ store.bootstrapNeeded ? 'Créer le premier compte' : 'Créer un compte' }}
             </button>
           </div>
         </div>
