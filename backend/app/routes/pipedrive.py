@@ -34,6 +34,10 @@ from ..pipedrive import (
     PipedriveError,
     get_client_for_team,
 )
+from ..pipedrive_cache import (
+    ensure_fresh_cache as _ensure_fresh_pd_cache,
+    match_contacts_to_pipedrive as _match_company_contacts_to_pd,
+)
 from ..teams import require_team_member, require_team_role
 
 log = logging.getLogger(__name__)
@@ -1007,6 +1011,67 @@ async def pipedrive_sync_company(
         len(resp.errors),
     )
     return resp
+
+
+@router.post(
+    "/teams/{team_slug}/companies/{company_slug}/pipedrive/auto-match",
+)
+async def pipedrive_auto_match_company(
+    team_slug: str,
+    company_slug: str,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Silently link FM contacts of a company to their existing Pipedrive
+    person (if any) by name + org match.
+
+    Populates `contact.pipedrive_person_id` on any contact where we find a
+    confident match, so the UI's green Pipedrive badge appears without the
+    user having to click "Sync" on each contact.
+
+    Throttled to ~1h per company to avoid hammering Pipedrive on every
+    page load.
+    """
+    db = get_db()
+    team, _ = await require_team_member(db, team_slug, user)
+
+    company = await db.companies.find_one(
+        {"team_id": team["_id"], "slug": company_slug.lower()}
+    )
+    if not company or company.get("deleted_at"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Company not found")
+
+    # Per-company throttle: skip if we already ran in the last hour.
+    now = datetime.now(tz=timezone.utc)
+    last = company.get("pipedrive_auto_match_at")
+    if last:
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if (now - last) < timedelta(hours=1):
+            return {"matched": 0, "skipped": "throttled", "last_run": last.isoformat()}
+
+    client, _src = await get_client_for_team(db, team)
+    if client is None:
+        # No Pipedrive configured for this team — nothing to do, and that's
+        # fine (non-fatal: we just return 0).
+        return {"matched": 0, "skipped": "no_pipedrive"}
+
+    try:
+        refreshed = await _ensure_fresh_pd_cache(db, team["_id"], client)
+        updates = await _match_company_contacts_to_pd(
+            db, team["_id"], company["_id"], company.get("name") or ""
+        )
+    finally:
+        await client.close()
+
+    await db.companies.update_one(
+        {"_id": company["_id"]},
+        {"$set": {"pipedrive_auto_match_at": now}},
+    )
+    return {
+        "matched": len(updates),
+        "updates": updates,
+        "cache_refreshed": refreshed,
+    }
 
 
 @router.post(

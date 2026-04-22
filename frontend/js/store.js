@@ -356,6 +356,32 @@ export const store = reactive({
     } finally {
       this.activeCompanyLoading = false;
     }
+    // Fire-and-forget: silently link FM contacts to their existing Pipedrive
+    // person (if any). Backend throttles to ~1h per company, so calling this
+    // on every `loadCompany` is cheap. The UI doesn't wait — the green
+    // Pipedrive badge just appears on matched contacts when the call returns.
+    this._runPipedriveAutoMatch(teamSlug, slug);
+  },
+
+  _runPipedriveAutoMatch(teamSlug, slug) {
+    api.pipedriveAutoMatchCompany?.(teamSlug, slug)
+      .then((res) => {
+        if (!res || !res.updates || !Array.isArray(res.updates)) return;
+        // Guard: user may have navigated away before the call resolved.
+        if (this.activeSlug !== slug || !this.activeCompany) return;
+        if (this.activeCompany.slug !== slug) return;
+        for (const u of res.updates) {
+          const c = (this.activeCompany.contacts || []).find(
+            (x) => String(x._id) === String(u.contact_id)
+          );
+          if (c) c.pipedrive_person_id = u.pipedrive_person_id;
+        }
+      })
+      .catch((e) => {
+        // Silent — auto-match is a nice-to-have, not worth bothering the user.
+        // eslint-disable-next-line no-console
+        console.debug('[pipedrive auto-match] skipped:', e?.message || e);
+      });
   },
 
   /* ===== Folders ===== */

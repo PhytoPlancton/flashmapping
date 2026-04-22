@@ -137,4 +137,12 @@ async def ensure_indexes() -> None:
         unique=True,
     )
 
+    # --- pipedrive_cache (persons book, scoped per team) ---
+    await db.pipedrive_cache.create_index(
+        [("team_id", ASCENDING), ("pd_id", ASCENDING)], unique=True
+    )
+    await db.pipedrive_cache.create_index(
+        [("team_id", ASCENDING), ("name_norm", ASCENDING)]
+    )
+
     log.info("MongoDB indexes ensured")

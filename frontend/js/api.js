@@ -256,6 +256,14 @@ export const syncContactToPipedrive = (teamSlug, contactId) =>
     { method: 'POST' }
   );
 
+// Silent backfill: link FM contacts of a company to their existing Pipedrive
+// person (if any) by name + org match. Fire-and-forget from the UI.
+export const pipedriveAutoMatchCompany = (teamSlug, companySlug) =>
+  request(
+    `/api/teams/${enc(teamSlug)}/companies/${enc(companySlug)}/pipedrive/auto-match`,
+    { method: 'POST' }
+  );
+
 // --- Custom-field mapping --------------------------------------------------
 // Drive the Settings > Intégrations > Pipedrive "Mapping des champs" panel.
 //   GET    /fields          → schema + mapping + whitelist (any member)
@@ -300,6 +308,6 @@ export default {
   listConnections, createConnection, deleteConnection, patchConnection,
   classifyTitle, seed, exportXlsx,
   pipedriveStatus, connectPipedrive, disconnectPipedrive,
-  syncCompanyToPipedrive, syncContactToPipedrive,
+  syncCompanyToPipedrive, syncContactToPipedrive, pipedriveAutoMatchCompany,
   pipedriveListFields, pipedriveRefreshFields, pipedriveUpdateMapping
 };
