@@ -38,15 +38,17 @@ export default {
       await store.switchTeam(team.slug);
     }
 
-    function goCreate() {
-      // Route onboarding with a hint so the back button goes back to /settings/teams.
+    function goOnboarding() {
+      // Close the Settings modal without restoring the pre-settings hash —
+      // we want to navigate to /onboarding, not back to the previous page.
+      // The sessionStorage hint lets Onboarding's "Retour" come back here.
       try { sessionStorage.setItem('onboarding_origin', '#/settings/teams'); } catch (e) {}
+      store.settingsModalOpen = false;
+      store._preSettingsHash = null;
       location.hash = '#/onboarding';
     }
-    function goJoin() {
-      try { sessionStorage.setItem('onboarding_origin', '#/settings/teams'); } catch (e) {}
-      location.hash = '#/onboarding';
-    }
+    const goCreate = goOnboarding;
+    const goJoin = goOnboarding;
 
     return { store, teams, nonPersonalCount, emptyCollab, doSwitch, goCreate, goJoin };
   },
