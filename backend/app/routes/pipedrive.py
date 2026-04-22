@@ -466,6 +466,83 @@ def _build_notes(
     return "\n".join(lines).strip()
 
 
+def _resolve_option_id(
+    field_def: dict[str, Any], value: Any
+) -> Optional[int | list[int]]:
+    """Map our string value to the right option id(s) for an enum/set field.
+
+    Pipedrive silently drops writes if you post a plain string to an
+    enum/set field — it expects the option's numeric id (or a comma-joined
+    list of ids for `set`). We match case-insensitively against each
+    option's label; on no match we return None so the caller can skip.
+
+    For `set` fields, `value` may be a comma-separated string or list —
+    every matching label becomes an id in the returned list.
+    """
+    options = field_def.get("options") or []
+    if not options:
+        return None
+
+    import re as _re
+
+    def _norm(s: Any) -> str:
+        return str(s or "").strip().casefold()
+
+    def _token_set(s: Any) -> frozenset[str]:
+        # Lowercase, collapse anything non-alphanumeric, keep only tokens
+        # of ≥ 2 chars. Lets "Head / Director" match "Director/Head" and
+        # tolerates separators / accents drift.
+        import unicodedata as _ud
+        raw = _ud.normalize("NFKD", str(s or ""))
+        raw = "".join(c for c in raw if not _ud.combining(c)).lower()
+        return frozenset(t for t in _re.split(r"[^a-z0-9]+", raw) if len(t) >= 2)
+
+    def _lookup(single: Any) -> Optional[int]:
+        key = _norm(single)
+        if not key:
+            return None
+        for opt in options:
+            if _norm(opt.get("label")) == key:
+                try:
+                    return int(opt.get("id"))
+                except (TypeError, ValueError):
+                    return None
+            # Also accept the id itself passed as string ("485") — lets
+            # pre-translated values round-trip cleanly.
+            if str(opt.get("id")) == str(single).strip():
+                try:
+                    return int(opt.get("id"))
+                except (TypeError, ValueError):
+                    return None
+        # Fallback: token-set equality, tolerant to word order + separators.
+        ts = _token_set(single)
+        if ts:
+            for opt in options:
+                if _token_set(opt.get("label")) == ts:
+                    try:
+                        return int(opt.get("id"))
+                    except (TypeError, ValueError):
+                        return None
+        return None
+
+    ftype = (field_def.get("field_type") or "").lower()
+    if ftype == "set":
+        if isinstance(value, list):
+            candidates = value
+        elif isinstance(value, str):
+            candidates = [p.strip() for p in value.split(",") if p.strip()]
+        else:
+            candidates = [value]
+        ids: list[int] = []
+        for v in candidates:
+            rid = _lookup(v)
+            if rid is not None and rid not in ids:
+                ids.append(rid)
+        return ids or None
+    # enum or any single-value field
+    return _lookup(value)
+
+
 def _build_person_payload(
     contact: dict[str, Any],
     company: dict[str, Any],
@@ -477,9 +554,9 @@ def _build_person_payload(
 
     `mapping` is `{our_key: pipedrive_key}` — when provided, we emit each
     mapped attribute under its Pipedrive key (hashed column for custom
-    fields, snake_case for standard ones). `schema` is only used to detect
-    fields that were deleted in Pipedrive since the last cache refresh, so
-    we can skip them rather than get a 400.
+    fields, snake_case for standard ones). `schema` drives two things:
+    (1) skipping fields deleted in Pipedrive since our cache, (2) resolving
+    our string values to option ids for enum/set fields.
     """
     payload: dict[str, Any] = {
         "name": (contact.get("name") or "").strip() or "(Sans nom)",
@@ -497,25 +574,27 @@ def _build_person_payload(
             {"value": phone, "primary": True, "label": "work"}
         ]
 
-    # `job_title` is a native Pipedrive Person attribute (always writable).
-    # We always emit it when we have one — the custom mapping's `title`
-    # slot only applies to *additional* "Intitulé du poste - MB" fields
-    # some teams create for reporting.
-    title = (contact.get("title") or "").strip()
-    if title:
-        payload["job_title"] = title
-
     if org_id is not None:
         payload["org_id"] = org_id
 
+    # Index schema by key once — used both for the enum option lookup and
+    # the existence guard below.
+    field_by_key: dict[str, dict[str, Any]] = {}
+    if schema:
+        for f in schema:
+            if isinstance(f, dict) and f.get("key"):
+                field_by_key[str(f["key"])] = f
+
+    # `job_title` is a native Pipedrive Person attribute. Some accounts
+    # have it disabled / removed — if it's missing from the schema we skip
+    # it (Pipedrive silently swallowed it before, leaving the field blank).
+    # The user's custom "Intitulé du poste" mapping still carries the value.
+    title = (contact.get("title") or "").strip()
+    if title and (not field_by_key or "job_title" in field_by_key):
+        payload["job_title"] = title
+
     # ---- Custom-field fan-out via mapping ----
     mapping = mapping or {}
-    valid_keys: Optional[set[str]] = None
-    if schema:
-        valid_keys = {
-            str(f.get("key")) for f in schema
-            if isinstance(f, dict) and f.get("key")
-        }
 
     for our_key, pd_key in mapping.items():
         pd_key = (pd_key or "").strip()
@@ -523,7 +602,7 @@ def _build_person_payload(
             continue
         # Guard: if the field was deleted in Pipedrive since our last
         # schema refresh, don't try to write to it (400 otherwise).
-        if valid_keys is not None and pd_key not in valid_keys:
+        if field_by_key and pd_key not in field_by_key:
             log.warning(
                 "Pipedrive field key %r (our_key=%s) no longer in schema — "
                 "skipping. Consider re-running auto-detect.",
@@ -537,7 +616,28 @@ def _build_person_payload(
         value = _resolve_contact_value(contact, our_key)
         if value in (None, "", [], 0):
             continue
-        payload[pd_key] = value
+        # enum / set fields need option ids — map our string to the right
+        # id(s) via the schema's `options` list. If nothing matches, we
+        # skip (sending the raw string makes Pipedrive silently drop it).
+        fdef = field_by_key.get(pd_key) or {}
+        ftype = (fdef.get("field_type") or "").lower()
+        if ftype in ("enum", "set"):
+            resolved = _resolve_option_id(fdef, value)
+            if resolved in (None, [], ""):
+                log.warning(
+                    "Pipedrive enum/set field %r (our_key=%s) has no option "
+                    "matching %r — skipping (add the option in Pipedrive or "
+                    "remap this field).",
+                    fdef.get("name") or pd_key, our_key, value,
+                )
+                continue
+            # `set` returns a list of ids; Pipedrive accepts comma-joined.
+            if isinstance(resolved, list):
+                payload[pd_key] = ",".join(str(i) for i in resolved)
+            else:
+                payload[pd_key] = resolved
+        else:
+            payload[pd_key] = value
 
     # NB: Pipedrive Persons DO NOT store free-form notes on the person doc
     # itself — notes are a separate entity (POST /notes). We used to stuff
