@@ -921,11 +921,12 @@ async def pipedrive_connect(
     company_domain = (me.get("company_domain") or "").strip() or None
     now = datetime.now(tz=timezone.utc)
 
+    from ..crypto import encrypt as _encrypt
     await db.teams.update_one(
         {"_id": team["_id"]},
         {
             "$set": {
-                "settings.pipedrive_api_key": key,
+                "settings.pipedrive_api_key": _encrypt(key),
                 "settings.pipedrive_user_name": user_name,
                 "settings.pipedrive_company_domain": company_domain,
                 "settings.pipedrive_connected_at": now,

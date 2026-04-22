@@ -20,6 +20,20 @@ class Settings(BaseSettings):
     # Pipedrive integration (push-only, single tenant MVP)
     pipedrive_api_key: str = ""
     pipedrive_api_base: str = "https://api.pipedrive.com/v1"
+    # ---- Security knobs ----
+    # "prod" toggles: disables /docs /redoc /openapi, tightens registration,
+    # raises password minimum length, and enables security headers.
+    env: str = "dev"              # "dev" | "prod"
+    # When false in prod, /api/auth/register returns 403 unless the caller
+    # holds a valid team-invite code (POST /api/teams/accept-invite covers
+    # the invite + register flow separately; /register is locked otherwise).
+    allow_open_registration: bool = True
+    # Fernet key (32 url-safe base64 bytes) used to encrypt secrets at rest
+    # (currently: per-team Pipedrive API keys). Generate once:
+    #     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # If unset, secrets are stored unencrypted (back-compat) but the app
+    # logs a warning at startup in prod.
+    secrets_encryption_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
@@ -27,6 +41,10 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @property
+    def is_prod(self) -> bool:
+        return (self.env or "").strip().lower() == "prod"
 
 
 _settings: Settings | None = None

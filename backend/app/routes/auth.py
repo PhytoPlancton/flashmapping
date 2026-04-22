@@ -14,7 +14,9 @@ from ..auth import (
     hash_password,
     verify_password,
 )
+from ..config import get_settings
 from ..db import get_db
+from ..rate_limit import rate_limit
 from ..models import (
     BootstrapResponse,
     ChangePasswordRequest,
@@ -46,18 +48,31 @@ async def bootstrap() -> BootstrapResponse:
     "/register",
     response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("register", max_calls=3, window_secs=3600))],
 )
 async def register(payload: RegisterRequest) -> TokenResponse:
-    """Create a user. Open to everyone.
+    """Create a user.
 
-    V2: registration is open; the notion of "global admin" is legacy — team
-    permissions are now governed by `team_members.role`. The very first user
-    is still flagged `role=admin` so the startup migration can anchor legacy
-    data to them; subsequent users get `role=user`. They belong to no team
-    yet and will be sent to onboarding.
+    Open registration is only allowed when the server is configured with
+    `ALLOW_OPEN_REGISTRATION=true` (default dev: true). In prod we lock it
+    down — new users must come in via a team invite (`/api/teams/accept-
+    invite`), never through this public endpoint.
+
+    The very first user always bypasses the lock so a fresh install can
+    bootstrap; they land with `role=admin`. Subsequent users get
+    `role=user`.
     """
     db = get_db()
+    settings = get_settings()
     existing_count = await db.users.count_documents({}, limit=1)
+
+    # Bootstrap (no user yet) is always allowed so a fresh install works.
+    if existing_count > 0 and not settings.allow_open_registration:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "L'inscription libre est désactivée. Demande un lien d'invitation.",
+        )
+
     role = "admin" if existing_count == 0 else "user"
 
     email = payload.email.lower().strip()
@@ -88,7 +103,11 @@ async def register(payload: RegisterRequest) -> TokenResponse:
     return TokenResponse(access_token=token, user=_public(doc))
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit("login", max_calls=8, window_secs=60))],
+)
 async def login(payload: LoginRequest) -> TokenResponse:
     db = get_db()
     email = payload.email.lower().strip()

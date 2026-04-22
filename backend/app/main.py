@@ -8,6 +8,7 @@ import asyncio
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +32,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("app")
 
-app = FastAPI(title="FlashMapping", version="2.0.0")
+from .config import get_settings
+_settings = get_settings()
+
+# In prod, hide the auto-generated Swagger UI, Redoc, and the openapi.json
+# dump — they hand an attacker a full map of every endpoint + schema.
+# The SPA still works fine without them.
+_docs_kwargs: dict[str, Any] = {}
+if _settings.is_prod:
+    _docs_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+app = FastAPI(title="FlashMapping", version="2.0.0", **_docs_kwargs)
 
 # CORS: allow any localhost / 127.0.0.1 port (dev-friendly).
 app.add_middleware(
@@ -41,6 +52,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Security headers — applied to every response. HSTS only in prod (on dev
+# you want plain HTTP to keep working). CSP is intentionally permissive
+# for `unsafe-inline` because the Vue template compiler relies on inline
+# attribute bindings; can be tightened with nonces later.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    if _settings.is_prod:
+        # 6 months HSTS; includeSubDomains because flashmapping.nmt.ovh
+        # doesn't have sub-domains, safe default.
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=15552000; includeSubDomains"
+        )
+    return response
 
 
 # Dev-mode: force browsers to re-fetch frontend files on every page load.

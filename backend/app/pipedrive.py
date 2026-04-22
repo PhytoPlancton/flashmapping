@@ -353,8 +353,10 @@ async def get_client_for_team(
 
     The caller is responsible for calling `await client.close()`.
     """
+    from .crypto import decrypt as _decrypt
     settings_dict = (team or {}).get("settings") or {}
-    team_key = (settings_dict.get("pipedrive_api_key") or "").strip()
+    stored_key = (settings_dict.get("pipedrive_api_key") or "").strip()
+    team_key = _decrypt(stored_key)
     if team_key:
         return PipedriveClient(team_key), "db"
 

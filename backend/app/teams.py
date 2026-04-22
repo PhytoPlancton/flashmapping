@@ -82,9 +82,9 @@ async def require_team_member(
 ) -> Tuple[dict, dict]:
     """Ensure the current user is a member of `team_slug`.
 
-    Raises:
-      404 if the team does not exist
-      403 if the user is not a member
+    Returns 404 both for "team doesn't exist" AND "team exists but you're
+    not a member". This prevents slug enumeration (an attacker can no
+    longer distinguish "exists" from "exists and you can't access").
 
     Returns (team, membership).
     """
@@ -93,9 +93,8 @@ async def require_team_member(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Team not found")
     membership = await get_membership(db, team["_id"], user["_id"])
     if not membership:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "You are not a member of this team"
-        )
+        # Same 404 — don't leak existence to non-members.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Team not found")
     return team, membership
 
 

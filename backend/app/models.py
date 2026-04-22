@@ -67,7 +67,7 @@ class UserPublic(MongoModel):
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=12)
     name: str = Field(min_length=1)
 
 
@@ -93,7 +93,7 @@ class UpdateMeRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=12)
 
 
 class OnboardingStateResponse(BaseModel):
@@ -188,7 +188,11 @@ class TeamSettingsPublic(BaseModel):
             data = s.model_dump()
         else:
             data = dict(s)
-        key = (data.get("pipedrive_api_key") or "").strip()
+        stored_key = (data.get("pipedrive_api_key") or "").strip()
+        # Stored may be encrypted ("fernet:...") — decrypt for the hint
+        # computation, but NEVER emit the raw key back to the client.
+        from .crypto import decrypt as _decrypt
+        key = _decrypt(stored_key) if stored_key else ""
         hint: Optional[str] = None
         if key:
             hint = f"****{key[-4:]}" if len(key) >= 4 else "****"
