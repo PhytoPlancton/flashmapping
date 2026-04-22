@@ -80,9 +80,6 @@ export default {
           </div>
         </div>
 
-        <p class="text-xs text-ink-400 text-center mt-6">
-          Local-first · JWT 24h · muchbetter.ai × TechToMed
-        </p>
       </div>
     </div>
   `
