@@ -154,10 +154,11 @@ async def match_contacts_to_pipedrive(
     fm_company_name: str,
 ) -> list[dict[str, Any]]:
     """Match FM contacts (company-scoped, without pipedrive_person_id) against
-    the team's Pipedrive cache by name (+ optional org tie-break).
+    the team's Pipedrive cache **by name only**. If the exact normalised name
+    exists in the CRM → link it (so the green Pipedrive badge appears). On
+    homonyms (multiple PD persons share the same name) we pick the first hit.
 
     Returns a list of {contact_id, pipedrive_person_id, pd_name, pd_org}.
-    Writes the matched `pipedrive_person_id` on each contact.
     """
     fm_contacts = await db.contacts.find(
         {
@@ -168,49 +169,23 @@ async def match_contacts_to_pipedrive(
                 {"pipedrive_person_id": {"$exists": False}},
             ],
         },
-        projection={"_id": 1, "name": 1, "email": 1},
+        projection={"_id": 1, "name": 1},
     ).to_list(length=None)
 
     if not fm_contacts:
         return []
-
-    company_norm = _norm_keep_order(fm_company_name)
 
     updated: list[dict[str, Any]] = []
     for c in fm_contacts:
         key = _norm(c.get("name") or "")
         if not key:
             continue
-        candidates = await db[CACHE_COL].find(
+        pick = await db[CACHE_COL].find_one(
             {"team_id": team_id, "name_norm": key},
-            projection={"pd_id": 1, "name": 1, "org_name": 1, "org_name_norm": 1},
-        ).to_list(length=None)
-        if not candidates:
+            projection={"pd_id": 1, "name": 1, "org_name": 1},
+        )
+        if not pick:
             continue
-
-        pick = None
-        if len(candidates) == 1:
-            pick = candidates[0]
-        else:
-            # Multiple homonyms: prefer the one whose org contains the FM company.
-            for cand in candidates:
-                org_norm = cand.get("org_name_norm") or ""
-                if org_norm and (
-                    company_norm in org_norm or org_norm in company_norm
-                ):
-                    pick = cand
-                    break
-            # No org match → skip (ambiguous, likely different person).
-            if pick is None:
-                continue
-
-        # Skip if the PD org doesn't match the FM company at all (avoid linking
-        # a homonym from a totally unrelated org).
-        org_norm = pick.get("org_name_norm") or ""
-        if org_norm and company_norm and company_norm not in org_norm \
-           and org_norm not in company_norm:
-            continue
-
         pd_id = int(pick["pd_id"])
         await db.contacts.update_one(
             {"_id": c["_id"]},
