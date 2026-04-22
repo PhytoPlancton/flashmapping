@@ -272,6 +272,17 @@ export const store = reactive({
     return updated;
   },
 
+  async saveCompanyICPs(icps) {
+    const teamSlug = this.teamSlug();
+    const compSlug = this.activeCompany?.slug;
+    if (!teamSlug || !compSlug) throw new Error('No active company');
+    const res = await api.patchCompanyICPs(teamSlug, compSlug, icps);
+    if (res && res.company) {
+      this.activeCompany = res.company;
+    }
+    return res;
+  },
+
   async recomputeICPsWithLLM() {
     const slug = this.currentTeam?.slug;
     if (!slug) throw new Error('No current team');

@@ -1908,6 +1908,34 @@ button.folder-create-inline {
   color: #111827;
 }
 .toggle-btn.icp-btn.active .icp-edit-chip { color: #FFFFFF; }
+
+/* Count of total ICP matches, shown inline in the ICP pill. */
+.icp-btn-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 600;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+.toggle-btn.icp-btn.active .icp-btn-count {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Small secondary badge next to the ICP pill, showing how many matches come
+   from the account-scoped ICPs (vs the permanent team ICPs). */
+.icp-account-badge {
+  display: inline-flex; align-items: center;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 600;
+  background: #F4EEFF;
+  color: #6B21A8;
+  border: 1px solid #E4D3FF;
+  cursor: help;
+}
 .toggle-btn.icp-btn.active .icp-edit-chip:hover { background: rgba(255, 255, 255, 0.15); }
 
 .icp-popover {
@@ -2025,6 +2053,13 @@ button.folder-create-inline {
   display: flex; flex-direction: column; gap: 12px;
 }
 
+.icp-section { display: flex; flex-direction: column; gap: 10px; }
+.icp-section-head { margin-bottom: -2px; }
+.icp-section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); text-transform: uppercase; }
+.icp-section-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.icp-section-company { padding-top: 10px; border-top: 1px dashed var(--border); margin-top: 6px; }
+.icp-section-company .icp-section-title { color: #7C3AED; }
+
 .icp-card {
   position: relative;
   border: 1px solid var(--border);
@@ -2034,6 +2069,10 @@ button.folder-create-inline {
   transition: border-color 0.15s;
 }
 .icp-card:hover { border-color: var(--border-strong); }
+.icp-card-company {
+  background: linear-gradient(180deg, #F6F2FF 0%, #FFFFFF 35%);
+  border-left: 2px solid #7C3AED;
+}
 .icp-card-head {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 8px;
@@ -2098,6 +2137,15 @@ button.folder-create-inline {
   color: var(--text);
 }
 .icp-chip-input::placeholder { color: var(--text-3); }
+
+.icp-chip-more {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--text-2); font-size: 11px; font-weight: 500;
+  padding: 3px 6px; border-radius: 4px;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.icp-chip-more:hover { color: var(--text); background: var(--surface-2); }
 
 .icp-emoji-pop {
   position: absolute;

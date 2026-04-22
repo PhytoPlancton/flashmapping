@@ -97,6 +97,25 @@ export default {
       store.openICPDrawer();
     }
 
+    // ICP match counts for the badge on the toolbar toggle.
+    const icpTotalCount = computed(() => {
+      const list = props.company?.contacts || [];
+      return list.reduce((n, c) => n + ((c.icp_match_ids || []).length > 0 ? 1 : 0), 0);
+    });
+    const icpAccountCount = computed(() => {
+      // How many contacts match AT LEAST one account-scoped ICP (excluding
+      // contacts that only match team ICPs). Subtle badge next to the pill.
+      const compIds = new Set(((props.company?.icps) || []).map(i => i.id));
+      if (!compIds.size) return 0;
+      const list = props.company?.contacts || [];
+      let n = 0;
+      for (const c of list) {
+        const ids = c.icp_match_ids || [];
+        if (ids.some(id => compIds.has(id))) n++;
+      }
+      return n;
+    });
+
     return {
       store, CATEGORIES, icons,
       viewMode, setViewMode,
@@ -105,6 +124,7 @@ export default {
       availableCountries, toggleCountry, isCountryActive, isCountryOff,
       hasActiveFilters,
       openICPEditor,
+      icpTotalCount, icpAccountCount,
     };
   },
   template: `
@@ -148,7 +168,8 @@ export default {
                     :class="{ active: store.icpOnly }"
                     @click="store.icpOnly = !store.icpOnly"
                     title="Afficher uniquement les contacts ICP">
-              ICP
+              <span>ICP</span>
+              <span v-if="icpTotalCount > 0" class="icp-btn-count">{{ icpTotalCount }}</span>
               <span class="icp-edit-chip"
                     role="button"
                     tabindex="0"
@@ -158,6 +179,11 @@ export default {
                 <span v-html="icons.pencil"></span>
               </span>
             </button>
+            <span v-if="icpAccountCount > 0"
+                  class="icp-account-badge"
+                  :title="icpAccountCount + ' match' + (icpAccountCount > 1 ? 's' : '') + ' via ICP spécifique à ce compte'">
+              +{{ icpAccountCount }}
+            </span>
           </div>
         </div>
       </div>

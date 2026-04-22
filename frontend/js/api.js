@@ -100,6 +100,13 @@ export const patchTeamICPs = (slug, { icps, icp_llm_enabled }) =>
 export const recomputeICPsLLM = (slug) =>
   request(`/api/teams/${enc(slug)}/icps/llm-recompute`, { method: 'POST' });
 
+// Account-scoped ICPs (apply only to one company).
+export const patchCompanyICPs = (teamSlug, companySlug, icps) =>
+  request(
+    `/api/teams/${enc(teamSlug)}/companies/${enc(companySlug)}/icps`,
+    { method: 'PATCH', body: { icps } }
+  );
+
 /* ============ Members ============ */
 
 export const listMembers  = (slug) => request(`/api/teams/${enc(slug)}/members`);
@@ -298,7 +305,7 @@ export default {
   bootstrap, login, register, me, logout,
   updateProfile, changePassword, onboardingState,
   listTeams, createTeam, getTeam, patchTeam, deleteTeam,
-  patchTeamICPs, recomputeICPsLLM,
+  patchTeamICPs, recomputeICPsLLM, patchCompanyICPs,
   listMembers, patchMember, removeMember,
   listInvites, createInvite, revokeInvite, acceptInvite,
   listCompanies, getCompany, createCompany, patchCompany, deleteCompany, restoreCompany,

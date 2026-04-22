@@ -274,6 +274,11 @@ class TeamICPsUpdateRequest(BaseModel):
     icp_llm_enabled: Optional[bool] = None
 
 
+class CompanyICPsUpdateRequest(BaseModel):
+    """PATCH payload for a company's account-specific ICPs."""
+    icps: list[ICP] = Field(default_factory=list)
+
+
 class TeamMemberOut(MongoModel):
     id: PyObjectId = Field(alias="_id")
     team_id: PyObjectId
@@ -416,6 +421,11 @@ class CompanyBase(BaseModel):
     # comparator's tie-breakers — techtomed_count then name — keep ordering
     # deterministic before any manual reorder happens).
     position: int = 0
+    # Account-specific ICPs. Same shape as `team.settings.icps` (permanent
+    # ICPs) but only apply when viewing THIS company — e.g. "Head of Oncology"
+    # matters for Ipsen, not for Aptar. A contact's `icp_match_ids` aggregates
+    # matches from BOTH team ICPs (shared) and this list (account-scoped).
+    icps: list["ICP"] = Field(default_factory=list)
 
 
 class CompanyCreate(CompanyBase):

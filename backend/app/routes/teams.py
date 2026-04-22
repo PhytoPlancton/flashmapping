@@ -49,6 +49,7 @@ from ..models import (
     TeamSummaryOut,
     TeamUpdateRequest,
     TeamICPsUpdateRequest,
+    CompanyICPsUpdateRequest,
     ICP,
 )
 from ..icp import match_keyword as icp_match_keyword, llm_match_titles
@@ -420,20 +421,59 @@ async def recompute_icps_with_llm(
 
 
 async def _recompute_keyword_icp_matches(
-    db: Any, team_id: ObjectId, icps: list[dict]
+    db: Any, team_id: ObjectId, team_icps: list[dict]
 ) -> int:
     """Rebuild `icp_match_ids` on every contact in a team (keyword pass).
 
-    Safe to call frequently — one pass, no external API calls. Returns the
-    number of contacts updated.
+    Merges the team's permanent ICPs with each contact's company's account-
+    scoped ICPs so both contribute to the final match list. Safe to call
+    frequently — one pass, no external API calls. Returns the number of
+    contacts updated.
     """
+    # Preload per-company ICPs so we don't re-query on every contact.
+    cur_co = db.companies.find(
+        {"team_id": team_id}, projection={"_id": 1, "icps": 1}
+    )
+    company_icps: dict[ObjectId, list[dict]] = {}
+    async for co in cur_co:
+        company_icps[co["_id"]] = co.get("icps") or []
+
     cur = db.contacts.find(
         {"team_id": team_id},
+        projection={"_id": 1, "title": 1, "company_id": 1, "icp_match_ids": 1},
+    )
+    updated = 0
+    async for c in cur:
+        icps_for_contact = list(team_icps) + list(
+            company_icps.get(c.get("company_id"), [])
+        )
+        new = icp_match_keyword(c.get("title") or "", icps_for_contact)
+        if sorted(new) != sorted(c.get("icp_match_ids") or []):
+            await db.contacts.update_one(
+                {"_id": c["_id"]}, {"$set": {"icp_match_ids": new}}
+            )
+            updated += 1
+    return updated
+
+
+async def _recompute_keyword_icp_matches_for_company(
+    db: Any,
+    team_id: ObjectId,
+    company_id: ObjectId,
+    team_icps: list[dict],
+    company_icps: list[dict],
+) -> int:
+    """Same as above but scoped to ONE company (used when the company's own
+    ICPs are edited — no need to touch other companies' contacts).
+    """
+    merged = list(team_icps) + list(company_icps)
+    cur = db.contacts.find(
+        {"team_id": team_id, "company_id": company_id},
         projection={"_id": 1, "title": 1, "icp_match_ids": 1},
     )
     updated = 0
     async for c in cur:
-        new = icp_match_keyword(c.get("title") or "", icps)
+        new = icp_match_keyword(c.get("title") or "", merged)
         if sorted(new) != sorted(c.get("icp_match_ids") or []):
             await db.contacts.update_one(
                 {"_id": c["_id"]}, {"$set": {"icp_match_ids": new}}
@@ -835,6 +875,67 @@ async def get_company(
     detail = CompanyDetailOut.model_validate({**doc, "contacts": []})
     detail.contacts = contacts
     return detail
+
+
+@router.patch(
+    "/teams/{team_slug}/companies/{company_slug}/icps",
+)
+async def update_company_icps(
+    team_slug: str,
+    company_slug: str,
+    payload: CompanyICPsUpdateRequest,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Replace a company's account-specific ICPs + recompute the match list
+    for every contact of that company (merged with team ICPs).
+    """
+    db = get_db()
+    team, _ = await require_team_member(db, team_slug, user)
+    company = await db.companies.find_one(
+        {"team_id": team["_id"], "slug": company_slug.lower()}
+    )
+    if not company or company.get("deleted_at"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Company not found")
+
+    # Normalise incoming ICP payload (same shape as team ICPs).
+    seen_ids: set[str] = set()
+    icps_norm: list[dict] = []
+    for icp in payload.icps:
+        icp_id = (icp.id or "").strip()
+        name = (icp.name or "").strip()
+        if not icp_id or not name or icp_id in seen_ids:
+            continue
+        seen_ids.add(icp_id)
+        syns = [s.strip() for s in (icp.synonyms or []) if s and s.strip()]
+        icps_norm.append({
+            "id": icp_id,
+            "name": name,
+            "emoji": (icp.emoji or "👤").strip() or "👤",
+            "synonyms": syns,
+        })
+
+    now = datetime.now(tz=timezone.utc)
+    await db.companies.update_one(
+        {"_id": company["_id"]},
+        {"$set": {"icps": icps_norm, "updated_at": now}},
+    )
+
+    team_icps = ((team.get("settings") or {}).get("icps")) or []
+    updated = await _recompute_keyword_icp_matches_for_company(
+        db, team["_id"], company["_id"], team_icps, icps_norm
+    )
+
+    # Return the fresh company + contacts so the frontend can refresh its view.
+    company["icps"] = icps_norm
+    contacts_cursor = db.contacts.find(
+        {"team_id": team["_id"], "company_id": company["_id"]}
+    ).sort([("level", 1), ("position_in_level", 1)])
+    contacts = [ContactOut.model_validate(c) async for c in contacts_cursor]
+    company["contact_count"] = len(contacts)
+    company["techtomed_count"] = sum(1 for c in contacts if c.is_techtomed)
+    detail = CompanyDetailOut.model_validate({**company, "contacts": []})
+    detail.contacts = contacts
+    return {"recomputed": updated, "company": detail.model_dump(by_alias=True)}
 
 
 @router.post(
@@ -1263,8 +1364,12 @@ async def create_contact(
     data["updated_at"] = now
     data["created_by"] = user["_id"]
     # Keyword-only ICP match at create time; LLM recompute is on-demand.
-    icps = (team.get("settings") or {}).get("icps") or []
-    data["icp_match_ids"] = icp_match_keyword(data.get("title") or "", icps)
+    # Merge team permanent ICPs + this company's account-scoped ICPs.
+    team_icps = (team.get("settings") or {}).get("icps") or []
+    co_icps = company.get("icps") or []
+    data["icp_match_ids"] = icp_match_keyword(
+        data.get("title") or "", list(team_icps) + list(co_icps)
+    )
 
     res = await db.contacts.insert_one(data)
     data["_id"] = res.inserted_id
@@ -1301,8 +1406,20 @@ async def update_contact(
         return ContactOut.model_validate(doc)
     # Recompute icp_match_ids if title changed (keyword pass only).
     if "title" in updates:
-        icps = (team.get("settings") or {}).get("icps") or []
-        updates["icp_match_ids"] = icp_match_keyword(updates["title"] or "", icps)
+        # Look up the contact's company to merge team + account ICPs.
+        existing = await db.contacts.find_one(
+            {"_id": oid, "team_id": team["_id"]}, {"company_id": 1}
+        )
+        team_icps = (team.get("settings") or {}).get("icps") or []
+        co_icps: list[dict] = []
+        if existing and existing.get("company_id"):
+            co = await db.companies.find_one(
+                {"_id": existing["company_id"]}, {"icps": 1}
+            )
+            co_icps = (co or {}).get("icps") or []
+        updates["icp_match_ids"] = icp_match_keyword(
+            updates["title"] or "", list(team_icps) + list(co_icps)
+        )
     updates["updated_at"] = datetime.now(tz=timezone.utc)
     doc = await db.contacts.find_one_and_update(
         {"_id": oid, "team_id": team["_id"]},
