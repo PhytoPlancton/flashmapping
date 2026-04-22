@@ -273,7 +273,8 @@ export const pipedriveAutoMatchCompany = (teamSlug, companySlug) =>
 
 // Folder export — returns a Blob + filename for the user to save.
 export async function exportFolderXLSX(teamSlug, folderId) {
-  const token = localStorage.getItem('token') || '';
+  const { getToken } = await import('./auth.js');
+  const token = getToken() || '';
   const id = folderId ? encodeURIComponent(folderId) : 'root';
   const res = await fetch(
     `/api/teams/${enc(teamSlug)}/folders/${id}/export/xlsx`,
