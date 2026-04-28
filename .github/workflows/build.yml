@@ -1,12 +1,15 @@
 name: Build and push image to GHCR
 
-# Push a new image whenever a version tag is pushed (e.g. `git tag v0.1.0 && git push --tags`).
-# The image is tagged twice: `latest` and the version (e.g. `0.1.0`) so the
-# EDJ Labs stack can pin either one.
+# Push a new image when:
+# - a version tag is pushed (e.g. `git tag v0.1.0 && git push --tags`) →
+#   image tagged with the version + `latest`
+# - the moving `stable` tag is moved → image tagged with `stable` so the
+#   EDJ Labs stack can pin a blessed snapshot independently of `latest`.
 on:
   push:
     tags:
       - 'v*'
+      - 'stable'
 
 jobs:
   build-and-push:
@@ -37,7 +40,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=stable,enable=${{ github.ref == 'refs/tags/stable' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
