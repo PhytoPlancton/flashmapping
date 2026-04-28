@@ -5,7 +5,7 @@ to NEW_URI/NEW_DB. Safe to re-run: it drops the destination collection
 before copying so the result is always a clean mirror.
 
 Usage:
-    NEW_URI='mongodb+srv://flashmapping:...@cluster0.iihl6kf.mongodb.net' \
+    NEW_URI='mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net' \
     NEW_DB=flashmapping \
     python scripts/migrate_atlas.py
 """
