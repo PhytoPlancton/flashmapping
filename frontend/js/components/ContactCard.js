@@ -160,13 +160,24 @@ export default {
       return parts.length ? parts.join(' • ') : '';
     });
 
+    // Heuristic: flag contacts likely NOT French-speaking so Nicolas
+    // knows to switch to English on the phone. FR markers cover the
+    // main French-speaking business regions; anything else → 🇬🇧.
+    const needsEnglish = computed(() => {
+      const loc = (props.contact?.location || '').toLowerCase();
+      if (!loc) return false;
+      const frMarkers = ['france', 'belgi', 'luxembourg', 'monaco', 'québec', 'quebec'];
+      return !frMarkers.some(m => loc.includes(m));
+    });
+
     return {
       store, confirming, catStyles, categoryLabel, filteredOut,
       openEdit, onEditClick, confirmDelete, onLinkedInClick,
       onDragStart, onDragEnd, icons, starsFilled,
       pipedriveSyncing, pipedriveError, isSynced,
       pipedriveTooltip, onPipedriveClick,
-      qualificationColor, qualificationLabel, labelsList, cardTooltip
+      qualificationColor, qualificationLabel, labelsList, cardTooltip,
+      needsEnglish
     };
   },
   template: `
@@ -189,7 +200,12 @@ export default {
             aria-hidden="true"></span>
 
       <div class="flex items-start justify-between gap-2">
-        <div class="card-name" :title="contact.name">{{ contact.name }}</div>
+        <div class="card-name" :title="contact.name">
+          <span v-if="needsEnglish"
+                class="mr-1"
+                title="Appeler en anglais (contact hors zone francophone)"
+                aria-label="Appeler en anglais">🇬🇧</span>{{ contact.name }}
+        </div>
         <div class="card-actions">
           <a v-if="contact.linkedin_url" :href="contact.linkedin_url"
              target="_blank" rel="noopener"
